@@ -1,39 +1,73 @@
 #!/bin/bash
-# uninstall minitowerkit script 
+# uninstall minitowerkit script
 . /lib/lsb/init-functions
 
-log_action_msg "Uninstalling minitower driver..."
+log_action_msg "Uninstalling Minitower driver..."
 sleep 3
-log_action_msg "Disable moodlight and oled services."
-sudo systemctl disable minitower_moodlight.service
-sudo systemctl disable minitower_oled.service
 
-log_action_msg "Stop moodlight and oled services."
-sudo systemctl stop minitower_moodlight.service
-sudo systemctl stop minitower_oled.service
+# ---------------------------------------------------------------------------
+# Stop and disable services
+# ---------------------------------------------------------------------------
+log_action_msg "Stopping and disabling services..."
+sudo systemctl stop    minitower_moodlight.service 2>/dev/null
+sudo systemctl disable minitower_moodlight.service 2>/dev/null
+sudo systemctl stop    minitower_oled.service      2>/dev/null
+sudo systemctl disable minitower_oled.service      2>/dev/null
 
-log_action_msg "Remove moodlight and oled service files."
-if [[ -e /etc/systemd/system/minitower_moodlight.service ]];then
-   sudo rm -f /etc/systemd/system/minitower_moodlight.service
-fi 
+# ---------------------------------------------------------------------------
+# Remove service files
+# ---------------------------------------------------------------------------
+log_action_msg "Removing service files..."
+[[ -e /etc/systemd/system/minitower_moodlight.service ]] \
+    && sudo rm -f /etc/systemd/system/minitower_moodlight.service
 
-if [[ -e /etc/systemd/system/minitower_oled.service ]];then
-   sudo rm -f /etc/systemd/system/minitower_oled.service
+[[ -e /etc/systemd/system/minitower_oled.service ]] \
+    && sudo rm -f /etc/systemd/system/minitower_oled.service
+
+sudo systemctl daemon-reload
+
+# ---------------------------------------------------------------------------
+# Remove I2C config line added by installer
+# ---------------------------------------------------------------------------
+log_action_msg "Removing I2C config from /boot/firmware/config.txt..."
+sudo sed -i '/dtparam=i2c_arm=on/d' /boot/firmware/config.txt
+
+# ---------------------------------------------------------------------------
+# Remove moodlight binary
+# ---------------------------------------------------------------------------
+log_action_msg "Removing /usr/bin/moodlight..."
+[[ -e /usr/bin/moodlight ]] && sudo rm -f /usr/bin/moodlight 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# Remove OLED scripts
+# ---------------------------------------------------------------------------
+log_action_msg "Removing /usr/local/minitower/..."
+[[ -d /usr/local/minitower ]] && sudo rm -rf /usr/local/minitower 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# Remove minitower system user
+# ---------------------------------------------------------------------------
+log_action_msg "Removing minitower system user..."
+if id -u minitower &>/dev/null; then
+    sudo userdel minitower \
+        && log_action_msg "User 'minitower' removed." \
+        || log_warning_msg "Could not remove user 'minitower' -- remove manually if needed."
+else
+    log_action_msg "User 'minitower' not found, skipping."
 fi
 
-log_action_msg "Remove dtoverlay configure from /boot/firmware/config.txt file"
-sudo sh -c "sed -i '/dtparam=i2c.*/ s/^/#/' /boot/firmware/config.txt"
-
-log_action_msg "Remove /usr/bin/moodlight file."
-if [[ -e /usr/bin/moodlight ]]; then
-	sudo rm -f /usr/bin/moodlight 2&>/dev/null 
+# ---------------------------------------------------------------------------
+# Optionally remove examples
+# ---------------------------------------------------------------------------
+if [[ -d /home/pi/minitower ]]; then
+    log_action_msg "Found /home/pi/minitower -- remove it? [y/N]"
+    read -r -t 15 answer
+    if [[ "${answer,,}" == "y" ]]; then
+        sudo rm -rf /home/pi/minitower
+        log_action_msg "/home/pi/minitower removed."
+    else
+        log_action_msg "Leaving /home/pi/minitower in place."
+    fi
 fi
 
-log_action_msg "Remove minitower oled python script"
-if [[ -d /usr/local/minitower ]]; then
-	sudo rm -rf /usr/local/minitower/ 2&>/dev/null
-fi
-
-
-log_success_msg "Uninstall Mini tower kit Driver Successfully." 
-
+log_success_msg "Minitower driver uninstalled successfully."
