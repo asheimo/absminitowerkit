@@ -68,7 +68,7 @@ git_clone_with_retry() {
 # ---------------------------------------------------------------------------
 log_action_msg "Installing system packages..."
 apt-get update && apt-get -y -q install \
-    git cmake scons \
+    git cmake scons gcc \
     python3-dev python3 python3-pip python3-pil \
     libjpeg-dev zlib1g-dev libfreetype6-dev \
     liblcms2-dev libopenjp2-7 "${LIBTIFF_PKG}" \
@@ -103,23 +103,33 @@ usermod -aG gpio,i2c minitower \
     || log_warning_msg "Could not add minitower to hardware groups -- I2C access may fail."
 
 # ---------------------------------------------------------------------------
-# Build and install rpi_ws281x moodlight binary
+# Build and install moodlight binary
 # ---------------------------------------------------------------------------
-log_action_msg "Building rpi_ws281x moodlight driver..."
+log_action_msg "Building moodlight driver..."
 
 # Always build from a clean clone to avoid stale build artifacts
 rm -rf /tmp/rpi_ws281x
 git_clone_with_retry "https://github.com/jgarff/rpi_ws281x" "/tmp/rpi_ws281x"
 
+# Build the rpi_ws281x library
 cd /tmp/rpi_ws281x \
     && scons \
     && mkdir -p build \
     && cd build \
-    && cmake -D BUILD_SHARED=OFF -D BUILD_TEST=ON .. \
+    && cmake -D BUILD_SHARED=OFF -D BUILD_TEST=OFF .. \
     && make install \
-    && cp ./test /usr/bin/moodlight \
+    || { log_failure_msg "rpi_ws281x library build failed."; exit 1; }
+
+# Compile our moodlight.c against the installed library
+log_action_msg "Compiling moodlight..."
+gcc -O2 -Wall \
+    -I /tmp/rpi_ws281x \
+    "${SCRIPT_DIR}/src/moodlight.c" \
+    -L /usr/local/lib \
+    -l ws2811 \
+    -o /usr/bin/moodlight \
     && log_action_msg "moodlight binary installed to /usr/bin/moodlight." \
-    || { log_failure_msg "rpi_ws281x build failed."; exit 1; }
+    || { log_failure_msg "moodlight compile failed."; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Enable I2C (takes effect after reboot)
