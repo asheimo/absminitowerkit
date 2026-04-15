@@ -66,7 +66,7 @@ sudo apt-get update && sudo apt-get -y -q install \
 # Install Python dependencies via pip (no local folder dependency)
 # ---------------------------------------------------------------------------
 log_action_msg "Installing Python libraries..."
-pip3 install psutil luma.oled --break-system-packages \
+sudo pip3 install psutil luma.oled --break-system-packages \
     || { log_failure_msg "pip3 install failed."; exit 1; }
 
 # ---------------------------------------------------------------------------
