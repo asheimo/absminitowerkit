@@ -20,7 +20,7 @@ ABS Mini Tower Kit driver and installation script for Raspberry Pi 4.
 
 ```bash
 cd ~
-git clone https://github.com/geeekpi/absminitowerkit.git
+git clone https://github.com/asheimo/absminitowerkit.git
 cd absminitowerkit/
 ./install_bookworm.sh
 ```
