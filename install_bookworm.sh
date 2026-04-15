@@ -90,15 +90,20 @@ sudo usermod -aG gpio,i2c minitower \
     || log_warning_msg "Could not add minitower to hardware groups -- I2C access may fail."
 
 # ---------------------------------------------------------------------------
-# Clone luma.examples to /home/pi/minitower/examples (reference only)
+# Clone luma.examples to /home/pi/minitower/examples (reference only, optional)
 # ---------------------------------------------------------------------------
 EXAMPLES_DIR="/home/pi/minitower/examples"
 if [[ ! -d "$EXAMPLES_DIR" ]]; then
     sudo mkdir -p "$EXAMPLES_DIR"
     sudo chown pi:pi "$(dirname "$EXAMPLES_DIR")"
-    git_clone_with_retry "https://github.com/rm-hull/luma.examples.git" "$EXAMPLES_DIR"
-    sudo chown -R pi:pi "$EXAMPLES_DIR"
-    log_action_msg "luma.examples cloned to $EXAMPLES_DIR (reference only)."
+    log_action_msg "Cloning luma.examples (reference only, skipped if unavailable)..."
+    if git clone "https://github.com/rm-hull/luma.examples.git" "$EXAMPLES_DIR" 2>/dev/null; then
+        sudo chown -R pi:pi "$EXAMPLES_DIR"
+        log_action_msg "luma.examples cloned to $EXAMPLES_DIR."
+    else
+        log_warning_msg "Could not clone luma.examples -- skipping. Install will continue."
+        sudo rm -rf "$EXAMPLES_DIR"
+    fi
 else
     log_action_msg "luma.examples already present at $EXAMPLES_DIR, skipping."
 fi
