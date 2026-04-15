@@ -166,7 +166,7 @@ StartLimitBurst=5
 [Service]
 User=root
 Type=simple
-ExecStart=/usr/bin/moodlight
+ExecStart=/usr/bin/moodlight -c
 Restart=always
 RestartSec=30
 

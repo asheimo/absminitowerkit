@@ -6,6 +6,7 @@
 
 import os
 import time
+import signal
 import subprocess as sp
 
 import psutil
@@ -70,6 +71,13 @@ def main():
     serial = i2c(port=1, address=0x3C)
     device = ssd1306(serial)
     font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+
+    def shutdown(signum, frame):
+        device.cleanup()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT,  shutdown)
 
     while True:
         draw_stats(device, font)
