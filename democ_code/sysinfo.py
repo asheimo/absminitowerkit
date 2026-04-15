@@ -1,16 +1,21 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+#
+# GeeekPi ABS Minitower - OLED system info display
+# Hardware: SSD1306, 128x64, I2C address 0x3C
 
 import os
-import sys
 import time
-from pathlib import Path
-from datetime import datetime
-from demo_opts import get_device
-from luma.core.render import canvas
-from PIL import ImageFont
-import psutil
 import subprocess as sp
+
+import psutil
+from PIL import ImageFont
+from luma.core.interface.serial import i2c
+from luma.core.render import canvas
+from luma.oled.device import ssd1306
+
+FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+FONT_SIZE = 11
 
 
 def bytes2human(n):
@@ -20,63 +25,57 @@ def bytes2human(n):
         prefix[s] = 1 << (i + 1) * 10
     for s in reversed(symbols):
         if n >= prefix[s]:
-            value = int(float(n) / prefix[s])
-            return '%s%s' % (value, s)
-    return "%sB" % n
+            return '%d%s' % (int(float(n) / prefix[s]), s)
+    return '%dB' % n
 
 
 def cpu_usage():
-    # load average
     av1, av2, av3 = os.getloadavg()
-    return "Ld:%.1f %.1f %.1f" % (av1, av2, av3)
+    return 'Ld:%.1f %.1f %.1f' % (av1, av2, av3)
 
-
-def uptime_usage():
-    # uptime, Ip
-    # uptime = datetime.now() - datetime.fromtimestamp(psutil.boot_time())
-    ip = sp.getoutput("hostname -I").split(' ')[0]
-    return "IP:%s" % (ip)
-    
 
 def mem_usage():
     usage = psutil.virtual_memory()
-    return "Mem:%s %.0f%%" % (bytes2human(usage.used), 100 - usage.percent)
+    return 'Mem:%s %.0f%%' % (bytes2human(usage.used), 100 - usage.percent)
 
 
-def disk_usage(dir):
-    usage = psutil.disk_usage(dir)
-    return "SD:%s %.0f%%" % (bytes2human(usage.used), usage.percent)
+def disk_usage():
+    usage = psutil.disk_usage('/')
+    return 'SD:%s %.0f%%' % (bytes2human(usage.used), usage.percent)
 
 
 def network(iface):
     stat = psutil.net_io_counters(pernic=True)[iface]
-    return "%s: Tx: %s,Rx: %s" % (iface, bytes2human(stat.bytes_sent), bytes2human(stat.bytes_recv))
+    return '%s Tx:%s Rx:%s' % (iface, bytes2human(stat.bytes_sent), bytes2human(stat.bytes_recv))
 
 
-def stats(device):
-    # use custom font
-    font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
-    font2 = ImageFont.truetype(font_path, 11)
+def ip_address():
+    ip = sp.getoutput('hostname -I').split(' ')[0]
+    return 'IP:%s' % ip
 
+
+def draw_stats(device, font):
     with canvas(device) as draw:
-        draw.text((0, 1), cpu_usage(), font=font2, fill="white")
-        if device.height >= 32:
-            draw.text((0, 12), mem_usage(), font=font2, fill="white")
-
-        if device.height >= 64:
-            draw.text((0, 24), disk_usage('/'), font=font2, fill="white")
-            try:
-                draw.text((0, 36), network('wlan0'), font=font2, fill="white")
-                draw.text((0, 48), uptime_usage(), font=font2, fill="white")
-
-            except KeyError:
-                # no wifi enabled/available
-                pass
+        draw.text((0,  1), cpu_usage(),  font=font, fill='white')
+        draw.text((0, 13), mem_usage(),  font=font, fill='white')
+        draw.text((0, 25), disk_usage(), font=font, fill='white')
+        try:
+            draw.text((0, 37), network('wlan0'), font=font, fill='white')
+        except KeyError:
+            draw.text((0, 37), 'wlan0: unavailable', font=font, fill='white')
+        draw.text((0, 49), ip_address(), font=font, fill='white')
 
 
-device = get_device()
+def main():
+    serial = i2c(port=1, address=0x3C)
+    device = ssd1306(serial)
+    font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
 
-while True:
-    stats(device)
-    time.sleep(5)
+    while True:
+        draw_stats(device, font)
+        time.sleep(5)
+
+
+if __name__ == '__main__':
+    main()
 

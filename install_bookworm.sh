@@ -2,36 +2,48 @@
 #
 . /lib/lsb/init-functions
 
-log_action_msg "Welcome to GeeekPi ABS Minitower kit installation Program"
+# ---------------------------------------------------------------------------
+# Must run as root
+# ---------------------------------------------------------------------------
+if [[ $EUID -ne 0 ]]; then
+    log_failure_msg "This script must be run as root. Try: sudo bash $0"
+    exit 1
+fi
 
-codename=$(lsb_release -a 2>/dev/null | grep Codename | awk '{print $NF}')
+# ---------------------------------------------------------------------------
+# Resolve script directory reliably regardless of how the script was invoked
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+log_action_msg "Welcome to GeeekPi ABS Minitower kit installation program"
+
+# ---------------------------------------------------------------------------
+# System checks
+# ---------------------------------------------------------------------------
 arch=$(uname -m)
-
-log_action_msg "Detecting system information..."
 if [[ $arch != 'aarch64' ]]; then
     log_failure_msg "This script requires a 64-bit (aarch64) OS. Detected: $arch"
     exit 1
 fi
 
+codename=$(lsb_release -cs 2>/dev/null)
+log_action_msg "Detected OS: $arch / $codename"
+
 case "$codename" in
     bookworm)
-        log_action_msg "OS: Raspberry Pi OS 64-bit Bookworm -- fully supported."
         LIBTIFF_PKG="libtiff5-dev"
-        sleep 3
         ;;
     trixie)
-        log_action_msg "OS: Raspberry Pi OS 64-bit Trixie -- fully supported."
         LIBTIFF_PKG="libtiff-dev"
-        sleep 3
         ;;
     *)
-        log_failure_msg "Unsupported OS codename: $codename. This script supports Bookworm and Trixie only."
+        log_failure_msg "Unsupported OS: $codename. This script supports Bookworm and Trixie only."
         exit 1
         ;;
 esac
 
 # ---------------------------------------------------------------------------
-# Helper: clone a git repo with a fixed number of retries then bail out
+# Helper: clone a git repo with retries
 # Usage: git_clone_with_retry <url> <destination>
 # ---------------------------------------------------------------------------
 git_clone_with_retry() {
@@ -47,15 +59,15 @@ git_clone_with_retry() {
         sleep 5
     done
 
-    log_failure_msg "Failed to clone $url after $max_attempts attempts. Check your internet connection and try again."
+    log_failure_msg "Failed to clone $url after $max_attempts attempts. Check your internet connection."
     exit 1
 }
 
 # ---------------------------------------------------------------------------
 # Install system packages
 # ---------------------------------------------------------------------------
-log_action_msg "Installing basic dependencies..."
-sudo apt-get update && sudo apt-get -y -q install \
+log_action_msg "Installing system packages..."
+apt-get update && apt-get -y -q install \
     git cmake scons \
     python3-dev python3 python3-pip python3-pil \
     libjpeg-dev zlib1g-dev libfreetype6-dev \
@@ -63,10 +75,10 @@ sudo apt-get update && sudo apt-get -y -q install \
     || { log_failure_msg "apt-get failed. Check your internet connection."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Install Python dependencies via pip (no local folder dependency)
+# Install Python libraries
 # ---------------------------------------------------------------------------
 log_action_msg "Installing Python libraries..."
-sudo pip3 install psutil luma.oled --break-system-packages \
+pip3 install psutil luma.oled --break-system-packages \
     || { log_failure_msg "pip3 install failed."; exit 1; }
 
 # ---------------------------------------------------------------------------
@@ -74,86 +86,67 @@ sudo pip3 install psutil luma.oled --break-system-packages \
 # ---------------------------------------------------------------------------
 log_action_msg "Creating minitower system user..."
 if ! id -u minitower &>/dev/null; then
-    sudo useradd \
+    useradd \
         --system \
         --no-create-home \
         --shell /usr/sbin/nologin \
         --comment "Minitower service account" \
-        minitower
-    log_action_msg "User 'minitower' created."
+        minitower \
+        && log_action_msg "User 'minitower' created." \
+        || { log_failure_msg "Failed to create minitower user."; exit 1; }
 else
     log_action_msg "User 'minitower' already exists, skipping."
 fi
 
-sudo usermod -aG gpio,i2c minitower \
+usermod -aG gpio,i2c minitower \
     && log_action_msg "Added minitower to gpio and i2c groups." \
     || log_warning_msg "Could not add minitower to hardware groups -- I2C access may fail."
 
 # ---------------------------------------------------------------------------
-# Clone luma.examples to /home/pi/minitower/examples (reference only, optional)
-# ---------------------------------------------------------------------------
-EXAMPLES_DIR="/home/pi/minitower/examples"
-if [[ ! -d "$EXAMPLES_DIR" ]]; then
-    sudo mkdir -p "$EXAMPLES_DIR"
-    sudo chown pi:pi "$(dirname "$EXAMPLES_DIR")"
-    log_action_msg "Cloning luma.examples (reference only, skipped if unavailable)..."
-    if git clone "https://github.com/rm-hull/luma.examples.git" "$EXAMPLES_DIR" 2>/dev/null; then
-        sudo chown -R pi:pi "$EXAMPLES_DIR"
-        log_action_msg "luma.examples cloned to $EXAMPLES_DIR."
-    else
-        log_warning_msg "Could not clone luma.examples -- skipping. Install will continue."
-        sudo rm -rf "$EXAMPLES_DIR"
-    fi
-else
-    log_action_msg "luma.examples already present at $EXAMPLES_DIR, skipping."
-fi
-
-# ---------------------------------------------------------------------------
 # Build and install rpi_ws281x moodlight binary
 # ---------------------------------------------------------------------------
-cd /tmp
-if [[ ! -d /tmp/rpi_ws281x ]]; then
-    git_clone_with_retry "https://github.com/jgarff/rpi_ws281x" "/tmp/rpi_ws281x"
-fi
+log_action_msg "Building rpi_ws281x moodlight driver..."
 
-cd /tmp/rpi_ws281x
-sudo scons \
+# Always build from a clean clone to avoid stale build artifacts
+rm -rf /tmp/rpi_ws281x
+git_clone_with_retry "https://github.com/jgarff/rpi_ws281x" "/tmp/rpi_ws281x"
+
+cd /tmp/rpi_ws281x \
+    && scons \
     && mkdir -p build \
     && cd build \
     && cmake -D BUILD_SHARED=OFF -D BUILD_TEST=ON .. \
-    && sudo make install \
-    && sudo cp ./test /usr/bin/moodlight \
+    && make install \
+    && cp ./test /usr/bin/moodlight \
     && log_action_msg "moodlight binary installed to /usr/bin/moodlight." \
     || { log_failure_msg "rpi_ws281x build failed."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Enable I2C
+# Enable I2C (takes effect after reboot)
 # ---------------------------------------------------------------------------
-log_action_msg "Enabling I2C on Raspberry Pi..."
-sudo sed -i '/dtparam=i2c_arm/d' /boot/firmware/config.txt
-echo "dtparam=i2c_arm=on" | sudo tee -a /boot/firmware/config.txt > /dev/null
-log_action_msg "I2C enabled."
-
-# ---------------------------------------------------------------------------
-# Install OLED Python scripts
-# ---------------------------------------------------------------------------
-log_action_msg "Installing OLED display scripts..."
-sudo mkdir -p /usr/local/minitower
-
-sudo cp "$(dirname "$0")/democ_code/demo_opts.py" /usr/local/minitower/demo_opts.py
-sudo cp "$(dirname "$0")/democ_code/sysinfo.py"   /usr/local/minitower/sysinfo.py
-
-sudo chown -R minitower:minitower /usr/local/minitower
-sudo chmod 755 /usr/local/minitower
-sudo chmod 644 /usr/local/minitower/*.py
-
-log_action_msg "OLED scripts installed."
+log_action_msg "Enabling I2C in /boot/firmware/config.txt..."
+sed -i '/dtparam=i2c_arm/d' /boot/firmware/config.txt
+echo "dtparam=i2c_arm=on" >> /boot/firmware/config.txt
+log_action_msg "I2C enabled (will be active after reboot)."
 
 # ---------------------------------------------------------------------------
-# Moodlight systemd service  (runs as root -- required for DMA/LED hardware)
+# Install OLED display script
+# ---------------------------------------------------------------------------
+log_action_msg "Installing OLED display script..."
+mkdir -p /usr/local/minitower
+cp "${SCRIPT_DIR}/democ_code/sysinfo.py" /usr/local/minitower/sysinfo.py \
+    || { log_failure_msg "Failed to copy sysinfo.py -- is the repo intact?"; exit 1; }
+
+chown -R minitower:minitower /usr/local/minitower
+chmod 755 /usr/local/minitower
+chmod 644 /usr/local/minitower/*.py
+log_action_msg "OLED script installed."
+
+# ---------------------------------------------------------------------------
+# Moodlight systemd service (runs as root -- required for DMA/LED hardware)
 # ---------------------------------------------------------------------------
 log_action_msg "Installing moodlight service..."
-sudo tee /etc/systemd/system/minitower_moodlight.service > /dev/null <<'EOF'
+tee /etc/systemd/system/minitower_moodlight.service > /dev/null <<'EOF'
 [Unit]
 Description=Minitower Moodlight Service
 DefaultDependencies=no
@@ -164,7 +157,6 @@ StartLimitBurst=5
 User=root
 Type=simple
 ExecStart=/usr/bin/moodlight
-RemainAfterExit=yes
 Restart=always
 RestartSec=30
 
@@ -172,14 +164,14 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 
-sudo chown root:root /etc/systemd/system/minitower_moodlight.service
-sudo chmod 644 /etc/systemd/system/minitower_moodlight.service
+chown root:root /etc/systemd/system/minitower_moodlight.service
+chmod 644 /etc/systemd/system/minitower_moodlight.service
 
 # ---------------------------------------------------------------------------
-# OLED systemd service  (runs as minitower -- only needs i2c group access)
+# OLED systemd service (runs as minitower -- only needs i2c group access)
 # ---------------------------------------------------------------------------
 log_action_msg "Installing OLED service..."
-sudo tee /etc/systemd/system/minitower_oled.service > /dev/null <<'EOF'
+tee /etc/systemd/system/minitower_oled.service > /dev/null <<'EOF'
 [Unit]
 Description=Minitower OLED Service
 DefaultDependencies=no
@@ -191,7 +183,6 @@ User=minitower
 WorkingDirectory=/usr/local/minitower
 Type=simple
 ExecStart=/usr/bin/python3 /usr/local/minitower/sysinfo.py
-RemainAfterExit=yes
 Restart=always
 RestartSec=10
 
@@ -199,20 +190,16 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-sudo chown root:root /etc/systemd/system/minitower_oled.service
-sudo chmod 644 /etc/systemd/system/minitower_oled.service
+chown root:root /etc/systemd/system/minitower_oled.service
+chmod 644 /etc/systemd/system/minitower_oled.service
 
 # ---------------------------------------------------------------------------
-# Enable and start services
+# Enable services (do not start -- I2C not active until after reboot)
 # ---------------------------------------------------------------------------
-log_action_msg "Enabling and starting services..."
-sudo systemctl daemon-reload
-
-sudo systemctl enable minitower_moodlight.service
-sudo systemctl start  minitower_moodlight.service
-
-sudo systemctl enable minitower_oled.service
-sudo systemctl start  minitower_oled.service
+log_action_msg "Enabling services (will start automatically after reboot)..."
+systemctl daemon-reload
+systemctl enable minitower_moodlight.service
+systemctl enable minitower_oled.service
 
 log_success_msg "Minitower installation finished successfully."
 
@@ -224,5 +211,5 @@ for i in $(seq 5 -1 1); do
     sleep 1
 done
 
-sudo sync
-sudo reboot
+sync
+reboot
