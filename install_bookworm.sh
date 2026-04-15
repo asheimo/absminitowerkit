@@ -204,12 +204,12 @@ systemctl enable minitower_oled.service
 log_success_msg "Minitower installation finished successfully."
 
 # ---------------------------------------------------------------------------
-# Reboot countdown
+# Reboot prompt
 # ---------------------------------------------------------------------------
-for i in $(seq 5 -1 1); do
-    log_action_msg "System will reboot in $i seconds..."
-    sleep 1
-done
-
-sync
-reboot
+read -r -p "Installation complete. Reboot now? [y/N] " answer
+if [[ "${answer,,}" == "y" ]]; then
+    sync
+    reboot
+else
+    log_action_msg "Reboot skipped. Please reboot manually to activate I2C and start services."
+fi
