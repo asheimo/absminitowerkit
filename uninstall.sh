@@ -2,54 +2,57 @@
 # uninstall minitowerkit script
 . /lib/lsb/init-functions
 
+# ---------------------------------------------------------------------------
+# Must run as root
+# ---------------------------------------------------------------------------
+if [[ $EUID -ne 0 ]]; then
+    log_failure_msg "This script must be run as root. Try: sudo bash $0"
+    exit 1
+fi
+
 log_action_msg "Uninstalling Minitower driver..."
-sleep 3
 
 # ---------------------------------------------------------------------------
 # Stop and disable services
 # ---------------------------------------------------------------------------
 log_action_msg "Stopping and disabling services..."
-sudo systemctl stop    minitower_moodlight.service 2>/dev/null
-sudo systemctl disable minitower_moodlight.service 2>/dev/null
-sudo systemctl stop    minitower_oled.service      2>/dev/null
-sudo systemctl disable minitower_oled.service      2>/dev/null
+systemctl stop    minitower_moodlight.service 2>/dev/null
+systemctl disable minitower_moodlight.service 2>/dev/null
+systemctl stop    minitower_oled.service      2>/dev/null
+systemctl disable minitower_oled.service      2>/dev/null
 
 # ---------------------------------------------------------------------------
 # Remove service files
 # ---------------------------------------------------------------------------
 log_action_msg "Removing service files..."
-[[ -e /etc/systemd/system/minitower_moodlight.service ]] \
-    && sudo rm -f /etc/systemd/system/minitower_moodlight.service
-
-[[ -e /etc/systemd/system/minitower_oled.service ]] \
-    && sudo rm -f /etc/systemd/system/minitower_oled.service
-
-sudo systemctl daemon-reload
+rm -f /etc/systemd/system/minitower_moodlight.service
+rm -f /etc/systemd/system/minitower_oled.service
+systemctl daemon-reload
 
 # ---------------------------------------------------------------------------
 # Remove I2C config line added by installer
 # ---------------------------------------------------------------------------
 log_action_msg "Removing I2C config from /boot/firmware/config.txt..."
-sudo sed -i '/dtparam=i2c_arm=on/d' /boot/firmware/config.txt
+sed -i '/dtparam=i2c_arm=on/d' /boot/firmware/config.txt
 
 # ---------------------------------------------------------------------------
 # Remove moodlight binary
 # ---------------------------------------------------------------------------
 log_action_msg "Removing /usr/bin/moodlight..."
-[[ -e /usr/bin/moodlight ]] && sudo rm -f /usr/bin/moodlight 2>/dev/null
+rm -f /usr/bin/moodlight
 
 # ---------------------------------------------------------------------------
 # Remove OLED scripts
 # ---------------------------------------------------------------------------
 log_action_msg "Removing /usr/local/minitower/..."
-[[ -d /usr/local/minitower ]] && sudo rm -rf /usr/local/minitower 2>/dev/null
+rm -rf /usr/local/minitower
 
 # ---------------------------------------------------------------------------
 # Remove minitower system user
 # ---------------------------------------------------------------------------
 log_action_msg "Removing minitower system user..."
 if id -u minitower &>/dev/null; then
-    sudo userdel minitower \
+    userdel minitower \
         && log_action_msg "User 'minitower' removed." \
         || log_warning_msg "Could not remove user 'minitower' -- remove manually if needed."
 else
@@ -57,13 +60,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Optionally remove examples
+# Optionally remove /home/pi/minitower if it exists
 # ---------------------------------------------------------------------------
 if [[ -d /home/pi/minitower ]]; then
-    log_action_msg "Found /home/pi/minitower -- remove it? [y/N]"
-    read -r -t 15 answer
+    read -r -p "Found /home/pi/minitower -- remove it? [y/N] " answer
     if [[ "${answer,,}" == "y" ]]; then
-        sudo rm -rf /home/pi/minitower
+        rm -rf /home/pi/minitower
         log_action_msg "/home/pi/minitower removed."
     else
         log_action_msg "Leaving /home/pi/minitower in place."
@@ -71,3 +73,14 @@ if [[ -d /home/pi/minitower ]]; then
 fi
 
 log_success_msg "Minitower driver uninstalled successfully."
+
+# ---------------------------------------------------------------------------
+# Reboot prompt (I2C config.txt change requires reboot to take effect)
+# ---------------------------------------------------------------------------
+read -r -p "Reboot now to apply config.txt changes? [y/N] " answer
+if [[ "${answer,,}" == "y" ]]; then
+    sync
+    reboot
+else
+    log_action_msg "Reboot skipped. Please reboot manually to apply changes."
+fi
