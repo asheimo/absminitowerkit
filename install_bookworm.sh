@@ -126,7 +126,7 @@ gcc -O2 -Wall \
     -I /tmp/rpi_ws281x \
     "${SCRIPT_DIR}/src/moodlight.c" \
     -L /usr/local/lib \
-    -l ws2811 \
+    -l ws2811 -l m \
     -o /usr/bin/moodlight \
     && log_action_msg "moodlight binary installed to /usr/bin/moodlight." \
     || { log_failure_msg "moodlight compile failed."; exit 1; }
