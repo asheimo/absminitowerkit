@@ -1,18 +1,17 @@
 [Unit]
-Description=Minitower moodlight Service
-DefaultDependencies=no
+Description=Minitower Moodlight Service
+After=multi-user.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
-RootDirectory=/ 
 User=root
 Type=simple
-ExecStart=sudo /usr/bin/moodlight 
-RemainAfterExit=yes
+ExecStart=/usr/bin/moodlight -c
+KillSignal=SIGTERM
+TimeoutStopSec=5
 Restart=always
 RestartSec=30
 
 [Install]
 WantedBy=multi-user.target
-

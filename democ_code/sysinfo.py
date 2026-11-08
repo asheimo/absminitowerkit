@@ -72,16 +72,33 @@ def main():
     device = ssd1306(serial)
     font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
 
-    def shutdown(signum, frame):
+    # Use a flag instead of doing cleanup work inside the signal handler.
+    # Calling device.cleanup() from inside a handler races the canvas context
+    # manager: if SIGTERM arrives mid-frame, the handler runs cleanup() and then
+    # returns into the canvas __exit__, which flushes pixels back to the panel
+    # and re-lights it. Setting a flag and exiting the main loop cleanly
+    # guarantees no canvas is in flight when cleanup() runs.
+    stopping = False
+
+    def request_stop(signum, frame):
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT,  request_stop)
+
+    try:
+        while not stopping:
+            draw_stats(device, font)
+            # Sleep in short slices so SIGTERM is observed within ~0.2s
+            # instead of waiting up to 5s for the next loop iteration.
+            for _ in range(25):
+                if stopping:
+                    break
+                time.sleep(0.2)
+    finally:
+        # Now safe: no canvas context is open, no pending pixel flush.
         device.cleanup()
-        raise SystemExit(0)
-
-    signal.signal(signal.SIGTERM, shutdown)
-    signal.signal(signal.SIGINT,  shutdown)
-
-    while True:
-        draw_stats(device, font)
-        time.sleep(5)
 
 
 if __name__ == '__main__':
