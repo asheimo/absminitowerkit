@@ -159,7 +159,7 @@ log_action_msg "Installing moodlight service..."
 tee /etc/systemd/system/minitower_moodlight.service > /dev/null <<'EOF'
 [Unit]
 Description=Minitower Moodlight Service
-DefaultDependencies=no
+After=multi-user.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -167,6 +167,8 @@ StartLimitBurst=5
 User=root
 Type=simple
 ExecStart=/usr/bin/moodlight -c
+KillSignal=SIGTERM
+TimeoutStopSec=5
 Restart=always
 RestartSec=30
 
@@ -184,7 +186,7 @@ log_action_msg "Installing OLED service..."
 tee /etc/systemd/system/minitower_oled.service > /dev/null <<'EOF'
 [Unit]
 Description=Minitower OLED Service
-DefaultDependencies=no
+After=multi-user.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -193,6 +195,8 @@ User=minitower
 WorkingDirectory=/usr/local/minitower
 Type=simple
 ExecStart=/usr/bin/python3 /usr/local/minitower/sysinfo.py
+KillSignal=SIGTERM
+TimeoutStopSec=5
 Restart=always
 RestartSec=10
 

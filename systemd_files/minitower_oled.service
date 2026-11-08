@@ -1,15 +1,18 @@
 [Unit]
 Description=Minitower OLED Service
-DefaultDependencies=no
+After=multi-user.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
+User=minitower
+WorkingDirectory=/usr/local/minitower
 Type=simple
-ExecStart=sudo /bin/bash -c '/usr/bin/python3 /usr/local/minitower/sysinfo.py'
-RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/minitower/sysinfo.py
+KillSignal=SIGTERM
+TimeoutStopSec=5
 Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-
